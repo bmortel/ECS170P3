@@ -84,10 +84,7 @@ def compute_td_loss(model, target_model, batch_size, gamma, replay_buffer):
     q_next = target_q_vals_next.gather(
         1, torch.max(q_vals_next, 1)[1].unsqueeze(1)).squeeze(1)
 
-    target_q = reward + (gamma * q_next)
-
-    if done:
-        target_q = 0
+    target_q = (reward + (gamma * q_next)) * (1 - done)
 
     loss = nn.functional.mse_loss(y, Variable(target_q.data))
 
