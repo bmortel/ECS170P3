@@ -51,14 +51,17 @@ class QLearner(nn.Module):
         return self.features(autograd.Variable(torch.zeros(1, *self.input_shape))).view(1, -1).size(1)
 
     def act(self, state, epsilon):
+
         if random.random() > epsilon:
+
             state = Variable(torch.FloatTensor(
-                np.float32(state)).unsqueeze(0), requires_grad=True)
-            action_values = self(state)
-            action = torch.argmax(action_values).item()
-            action = (int)(action)
+                state).unsqueeze(0), requires_grad=True)
+            q_value = self(state)
+            action = torch.argmax(q_value)
+
         else:
             action = random.randrange(self.env.action_space.n)
+
         return action
 
     def copy_from(self, target):
@@ -66,21 +69,30 @@ class QLearner(nn.Module):
 
 
 def compute_td_loss(model, target_model, batch_size, gamma, replay_buffer):
-    state, action, reward, next_state, done = torch.Tensor.cpu(
-        replay_buffer.sample(batch_size))
+    state, action, reward, next_state, done = replay_buffer.sample(batch_size)
 
-    state = Variable(torch.FloatTensor(
-        np.float32(state)).squeeze(1), requires_grad=True)
+    state = Variable(torch.FloatTensor(np.float32(state)))
     next_state = Variable(torch.FloatTensor(
-        np.float32(next_state)).squeeze(1), requires_grad=True)
+        np.float32(next_state)), requires_grad=True)
     action = Variable(torch.LongTensor(action))
     reward = Variable(torch.FloatTensor(reward))
     done = Variable(torch.FloatTensor(done))
 
-    y = reward + (gamma * model.forward(next_state))
-    target = target_model.forward(state)
-    # implement the loss function here
-    loss = nn.functional.mse_loss(y, target)
+    q_vals = model(state)
+    q_vals_next = model(next_state)
+    target_q_vals_next = target_model(next_state)
+
+    y = q_vals.gather(1, action.view(-1, 1)).squeeze(1)
+
+    q_next = target_q_vals_next.gather(
+        1, torch.max(q_vals_next, 1)[1].unsqueeze(1)).squeeze(1)
+
+    target_q = reward + (gamma * q_next)
+
+    if done[0]:
+        target_q = 0
+
+    loss = nn.functional.mse_loss(y, Variable(target_q.data))
 
     return loss
 
@@ -93,20 +105,14 @@ class ReplayBuffer(object):
         state = np.expand_dims(state, 0)
         next_state = np.expand_dims(next_state, 0)
 
-        e = (state, action, reward, next_state, done)
-        self.buffer.append(e)
+        self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
-        # TODO: Randomly sampling data with specific batch size from the buffer
-        experiences = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, done = zip(
+            *random.sample(self.buffer, batch_size))
 
-        memory = np.array(experiences)
-
-        state = torch.from_numpy(np.array(memory[:][0]))
-        action = torch.from_numpy(np.array(memory[:][1]))
-        reward = torch.from_numpy(np.array(memory[:][2]))
-        next_state = torch.from_numpy(np.array(memory[:][3]))
-        done = torch.from_numpy(np.array(memory[:][4]))
+        state = np.concatenate(state)
+        next_state = np.concatenate(next_state)
 
         return state, action, reward, next_state, done
 
