@@ -51,17 +51,14 @@ class QLearner(nn.Module):
         return self.features(autograd.Variable(torch.zeros(1, *self.input_shape))).view(1, -1).size(1)
 
     def act(self, state, epsilon):
-
         if random.random() > epsilon:
 
             state = Variable(torch.FloatTensor(
                 state).unsqueeze(0), requires_grad=True)
             q_value = self(state)
             action = torch.argmax(q_value)
-
         else:
             action = random.randrange(self.env.action_space.n)
-
         return action
 
     def copy_from(self, target):
@@ -89,7 +86,7 @@ def compute_td_loss(model, target_model, batch_size, gamma, replay_buffer):
 
     target_q = reward + (gamma * q_next)
 
-    if done[0]:
+    if done:
         target_q = 0
 
     loss = nn.functional.mse_loss(y, Variable(target_q.data))
@@ -108,6 +105,7 @@ class ReplayBuffer(object):
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
+
         state, action, reward, next_state, done = zip(
             *random.sample(self.buffer, batch_size))
 
